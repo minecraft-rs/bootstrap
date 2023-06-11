@@ -1,10 +1,8 @@
-use mc_bootstrap::manifest::read_manifest_from_file;
+use mc_bootstrap::manifest::read_manifest_from_str;
 
 fn main() {
-    let manifest = read_manifest_from_file(
-        "C:\\Users\\sammwy\\AppData\\Roaming\\.minecraft\\versions\\1.19.3\\1.19.3.json",
-    )
-    .unwrap();
+    let manifest =
+        read_manifest_from_str(include_str!("./.minecraft/versions/1.19.4/1.19.4.json")).unwrap();
 
     println!("Asset index: {}", manifest.asset_index.id);
     println!("Assets: {}", manifest.assets);
@@ -16,5 +14,5 @@ fn main() {
     println!("Launcher version: {}", manifest.minimum_launcher_version);
     println!("Release time: {}", manifest.release_time);
     println!("Time: {}", manifest.time);
-    println!("Type: {}", manifest.type_);
+    println!("Type: {}", manifest.version_type);
 }

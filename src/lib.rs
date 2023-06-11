@@ -1,8 +1,10 @@
 pub mod classpath;
 pub mod manifest;
+pub mod rules;
 
-use manifest::read_manifest_from_file;
-use std::{path::Path, process::Command};
+use manifest::{read_manifest_from_file, JvmArgument};
+use rules::is_all_rules_satisfied;
+use std::{path::PathBuf, process::Command};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -23,130 +25,169 @@ pub enum ClientBootstrapError {
     Json(#[from] serde_json::Error),
 }
 
+pub struct ClientAuth {
+    pub access_token: Option<String>,
+    pub username: String,
+    pub uuid: Option<String>,
+}
+
+pub struct ClientVersion {
+    pub version: String,
+    pub version_type: String,
+}
+
+pub struct ClientSettings {
+    pub assets: PathBuf,
+    pub auth: ClientAuth,
+    pub game_dir: PathBuf,
+    pub java_bin: PathBuf,
+    pub libraries_dir: PathBuf,
+    pub manifest_file: PathBuf,
+    pub natives_dir: PathBuf,
+    pub version: ClientVersion,
+    pub version_jar_file: PathBuf,
+}
+
 pub struct ClientBootstrap {
-    access_token: String,
-    game_dir: String,
-    java_bin: String,
-    username: String,
-    uuid: String,
-    version: String,
-    version_type: String,
+    pub settings: ClientSettings,
 }
 
 impl ClientBootstrap {
-    pub fn new(
-        access_token: &str,
-        game_dir: &str,
-        java_bin: &str,
-        username: &str,
-        uuid: &str,
-        version: &str,
-        version_type: &str,
-    ) -> Self {
-        Self {
-            access_token: access_token.to_string(),
-            game_dir: game_dir.to_string(),
-            java_bin: java_bin.to_string(),
-            username: username.to_string(),
-            uuid: uuid.to_string(),
-            version: version.to_string(),
-            version_type: version_type.to_string(),
-        }
+    pub fn new(settings: ClientSettings) -> Self {
+        Self { settings }
     }
 
-    pub fn get_assets_dir(&self) -> String {
-        return Path::new(&self.game_dir)
-            .join("assets")
-            .to_str()
-            .unwrap()
-            .to_string();
+    pub fn get_assets_dir(&self) -> PathBuf {
+        return self.settings.assets.clone();
     }
 
-    pub fn get_libs_dir(&self) -> String {
-        return Path::new(&self.game_dir)
-            .join("libraries")
-            .to_str()
-            .unwrap()
-            .to_string();
+    pub fn get_game_dir(&self) -> PathBuf {
+        return self.settings.game_dir.clone();
     }
 
-    pub fn get_json_file(&self) -> String {
-        return Path::new(&self.game_dir)
-            .join("versions")
-            .join(&self.version)
-            .join(format!("{}.json", self.version))
-            .to_str()
-            .unwrap()
-            .to_string();
+    pub fn get_json_file(&self) -> PathBuf {
+        return self.settings.manifest_file.clone();
     }
 
-    pub fn get_jar_file(&self) -> String {
-        return Path::new(&self.game_dir)
-            .join("versions")
-            .join(&self.version)
-            .join(format!("{}.jar", self.version))
-            .to_str()
-            .unwrap()
-            .to_string();
+    pub fn get_jar_file(&self) -> PathBuf {
+        return self.settings.version_jar_file.clone();
     }
 
-    pub fn get_natives_dir(&self) -> String {
-        return Path::new(&self.game_dir)
-            .join("versions")
-            .join(&self.version)
-            .join("natives")
-            .to_str()
-            .unwrap()
-            .to_string();
+    pub fn get_libs_dir(&self) -> PathBuf {
+        return self.settings.libraries_dir.clone();
+    }
+
+    pub fn get_natives_dir(&self) -> PathBuf {
+        return self.settings.natives_dir.clone();
     }
 
     pub fn build_args(&self) -> Result<Vec<String>, ClientBootstrapError> {
-        if !Path::new(&self.game_dir).is_dir() {
+        let auth = &self.settings.auth;
+        let assets_dir = self.get_assets_dir();
+        let game_dir = self.get_game_dir();
+        let java_bin = self.settings.java_bin.clone();
+        let json_file = self.get_json_file();
+        let natives_dir = self.get_natives_dir();
+        let version = &self.settings.version;
+
+        if !game_dir.is_dir() {
             return Err(ClientBootstrapError::GameDirNotExist);
         }
 
-        if !Path::new(&self.java_bin).is_file() {
+        if !java_bin.is_file() {
             return Err(ClientBootstrapError::JavaBinNotExist);
         }
 
-        let manifest_file = &self.get_json_file();
-        if !Path::new(manifest_file).is_file() {
+        if !json_file.is_file() {
             return Err(ClientBootstrapError::VersionFileNotFound);
         }
 
-        let manifest = read_manifest_from_file(manifest_file).unwrap();
+        let manifest = read_manifest_from_file(json_file).unwrap();
+
+        let assets_index = &manifest.asset_index.id;
         let classpath = classpath::create_classpath(
             self.get_jar_file(),
             self.get_libs_dir(),
             manifest.libraries,
         );
 
-        let args: Vec<String> = vec![
-            format!("-Djava.library.path={}", self.get_natives_dir()),
-            format!("-Dminecraft.launcher.brand={}", "mc_bootstrap"),
-            format!("-Dminecraft.launcher.version={}", "1.0.0"),
-            format!("-cp"),
-            format!("{}", classpath),
-            format!("{}", manifest.main_class),
-            format!("--accessToken"),
-            format!("{}", self.access_token),
-            format!("--assetsDir"),
-            format!("{}", self.get_assets_dir()),
-            format!("--assetsIndex"),
-            format!("{}", manifest.asset_index.id),
-            format!("--gameDir"),
-            format!("{}", self.game_dir),
-            format!("--userType"),
-            format!("{}", "mojang"),
-            format!("--username"),
-            format!("{}", self.username),
-            format!("--uuid"),
-            format!("{}", self.uuid),
-            format!("--version"),
-            format!("{}", self.version),
-            format!("--versionType"),
-            format!("{}", self.version_type),
-        ];
+        let mut args: Vec<String> = vec![];
+
+        for arg in manifest.arguments.jvm {
+            match arg {
+                JvmArgument::String(value) => {
+                    args.push(value);
+                }
+                JvmArgument::Struct { value, rules, .. } => {
+                    if !is_all_rules_satisfied(&rules) {
+                        continue;
+                    }
+
+                    if let Some(value) = value.as_str() {
+                        args.push(value.to_string());
+                    } else if let Some(value_arr) = value.as_array() {
+                        for value in value_arr {
+                            if let Some(value) = value.as_str() {
+                                args.push(value.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        args.push(manifest.main_class);
+
+        for arg in manifest.arguments.game {
+            match arg {
+                JvmArgument::String(value) => {
+                    args.push(value);
+                }
+                JvmArgument::Struct { value, rules, .. } => {
+                    if !is_all_rules_satisfied(&rules) {
+                        continue;
+                    }
+
+                    if let Some(value) = value.as_str() {
+                        args.push(value.to_string());
+                    } else if let Some(value_arr) = value.as_array() {
+                        for value in value_arr {
+                            if let Some(value) = value.as_str() {
+                                args.push(value.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        args = args
+            .iter()
+            .map(|x| {
+                x.replace("${assets_root}", &assets_dir.to_str().unwrap())
+                    .replace("${game_directory}", &game_dir.to_str().unwrap())
+                    .replace("${natives_directory}", &natives_dir.to_str().unwrap())
+                    .replace("${launcher_name}", "minecraft-rs/bootstrap")
+                    .replace("${launcher_version}", "0.1.1")
+                    .replace(
+                        "${auth_access_token}",
+                        auth.access_token
+                            .clone()
+                            .unwrap_or("null".to_string())
+                            .as_str(),
+                    )
+                    .replace("${auth_player_name}", auth.username.as_str())
+                    .replace(
+                        "${auth_uuid}",
+                        auth.uuid.clone().unwrap_or("null".to_string()).as_str(),
+                    )
+                    .replace("${version_type}", &version.version_type)
+                    .replace("${version_name}", &version.version)
+                    .replace("${assets_index_name}", &assets_index)
+                    .replace("${user_properties}", "{}")
+                    .replace("${classpath}", &classpath)
+            })
+            .collect();
 
         return Ok(args);
     }
@@ -154,7 +195,7 @@ impl ClientBootstrap {
     pub fn launch(&self) -> Result<i32, ClientBootstrapError> {
         let args = self.build_args().unwrap();
 
-        let mut process = Command::new(&self.java_bin)
+        let mut process = Command::new(&self.settings.java_bin)
             .args(args)
             .spawn()
             .expect("command failed to start");

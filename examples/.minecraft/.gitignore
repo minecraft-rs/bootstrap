@@ -1,0 +1,10 @@
+assets/
+libraries/
+logs/
+resourcepacks/
+saves/
+options.txt
+*.png
+*.jpg
+*.dat
+*.jar
