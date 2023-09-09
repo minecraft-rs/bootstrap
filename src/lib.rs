@@ -197,6 +197,7 @@ impl ClientBootstrap {
 
         let mut process = Command::new(&self.settings.java_bin)
             .args(args)
+            .current_dir(&self.settings.game_dir)
             .spawn()
             .expect("command failed to start");
 

@@ -2,13 +2,8 @@ use std::path::PathBuf;
 
 use mc_bootstrap::{ClientAuth, ClientBootstrap, ClientSettings, ClientVersion};
 
-fn get_current_dir() -> PathBuf {
-    let current_dir = std::env::current_dir().unwrap();
-    current_dir
-}
-
 fn get_mc_dir() -> PathBuf {
-    return get_current_dir().join("examples").join(".minecraft");
+    return PathBuf::from("E:\\Workspaces\\downloader\\.minecraft");
 }
 
 fn main() {
