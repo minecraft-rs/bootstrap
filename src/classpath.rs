@@ -12,6 +12,12 @@ pub fn should_use_library(lib: &Library) -> bool {
     return is_all_rules_satisfied(rules);
 }
 
+
+#[cfg(target_family = "unix")]
+pub const CLASSPATH_SEP: char = ':';
+#[cfg(target_famliy = "windows")]
+pub const CLASSPATH_SEP: char =  ';';
+
 pub fn create_classpath(
     jar_file: PathBuf,
     libraries_path: PathBuf,
@@ -25,7 +31,7 @@ pub fn create_classpath(
             let artifact = &lib.downloads.artifact;
             let lib_path = artifact.path.clone();
             let fixed_lib_path = Path::new(&libraries_path).join(lib_path.replace("/", "\\"));
-            classpath = format!("{};{}", classpath, fixed_lib_path.to_str().unwrap());
+            classpath = format!("{}{}{}", classpath, CLASSPATH_SEP, fixed_lib_path.to_str().unwrap());
         }
     }
 
