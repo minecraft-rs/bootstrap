@@ -13,10 +13,11 @@ pub fn should_use_library(lib: &Library) -> bool {
 }
 
 
-#[cfg(target_family = "unix")]
+#[cfg(target_os = "linux")]
 pub const CLASSPATH_SEP: char = ':';
-#[cfg(target_famliy = "windows")]
-pub const CLASSPATH_SEP: char =  ';';
+
+#[cfg(not(target_os = "linux"))]
+pub const CLASSPATH_SEP: char = ';';
 
 pub fn create_classpath(
     jar_file: PathBuf,
