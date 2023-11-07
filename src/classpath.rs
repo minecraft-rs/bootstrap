@@ -12,11 +12,10 @@ pub fn should_use_library(lib: &Library) -> bool {
     return is_all_rules_satisfied(rules);
 }
 
-
-#[cfg(target_os = "linux")]
+#[cfg(not(target_os = "windows"))] // Linux and MacOS
 pub const CLASSPATH_SEP: char = ':';
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "windows")] // Windows
 pub const CLASSPATH_SEP: char = ';';
 
 pub fn create_classpath(
